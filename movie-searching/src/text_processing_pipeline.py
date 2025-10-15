@@ -1,4 +1,6 @@
+import json
 import string
+from typing import List
 from nltk.stem import PorterStemmer
 
 with open('./data/stopwords.txt', 'r') as stopwords_file:
@@ -18,8 +20,7 @@ def text_processing(text: str) -> list:
     text = [s for s in text if s] # remove empty tokens
 
     # Stop words - removes unneccesary stopwords
-    text = set(text) - stopwords
-    text = list(text)
+    text = [t for t in text if t not in stopwords]
 
     # Stemming - removing word variations (running, runs, ran -> run)
     stemmer = PorterStemmer()
