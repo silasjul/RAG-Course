@@ -10,6 +10,7 @@ from .search_utils import (
     CACHE_DIR,
     DEFAULT_SEARCH_LIMIT,
     BM25_K1,
+    BM25_B,
     load_movies,
     load_stopwords,
 )
@@ -26,11 +27,14 @@ class InvertedIndex:
 
         # key: id -> Counters for each term in that movie ex: Counter({'action': 2, 'hero': 1, 'villain': 3})
         self.term_frequencies = defaultdict(Counter)
-        
+
+        # key: id -> length of document
+        self.doc_lengths: dict[int, int] = {}
+
         self.index_path = os.path.join(CACHE_DIR, "index.pkl")
         self.docmap_path = os.path.join(CACHE_DIR, "docmap.pkl")
         self.tf_path = os.path.join(CACHE_DIR, "term_frequencies.pkl")
-
+        self.doc_lengths_path = os.path.join(CACHE_DIR, "doc_lengths.pkl")
 
     def build(self) -> None:
         movies = load_movies()
@@ -48,6 +52,8 @@ class InvertedIndex:
             pickle.dump(self.docmap, f)
         with open(self.tf_path, "wb") as f:
             pickle.dump(self.term_frequencies, f)
+        with open(self.doc_lengths_path, "wb") as f:
+            pickle.dump(self.doc_lengths, f)
 
     def load(self) -> None:
         with open(self.index_path, "rb") as f:
@@ -56,6 +62,8 @@ class InvertedIndex:
             self.docmap = pickle.load(f)
         with open(self.tf_path, "rb") as f:
             self.term_frequencies = pickle.load(f)
+        with open(self.doc_lengths_path, "rb") as f:
+            self.doc_lengths = pickle.load(f)
 
     def get_documents(self, term: str) -> list[int]:
         doc_ids = self.index.get(term, set())
@@ -66,6 +74,12 @@ class InvertedIndex:
         for token in set(tokens):
             self.index[token].add(doc_id)
         self.term_frequencies[doc_id].update(tokens)
+        self.doc_lengths[doc_id] = len(tokens)
+
+    def __get_avg_doc_length(self) -> float:
+        if not self.doc_lengths:
+            return 0.0
+        return sum(self.doc_lengths.values()) / len(self.doc_lengths)
 
     def get_tf(self, doc_id: int, term: str) -> int:
         tokens = tokenize_text(term)
@@ -74,9 +88,13 @@ class InvertedIndex:
         token = tokens[0]
         return self.term_frequencies[doc_id][token]
 
-    def get_bm25_tf(self, doc_id, term, k1=BM25_K1):
+    def get_bm25_tf(self, doc_id, term, k1=BM25_K1, b=BM25_B):
+        # Length normalization factor
+        length_norm = (
+            1 - b + b * (self.doc_lengths[doc_id] / self.__get_avg_doc_length())
+        )
         tf = self.get_tf(doc_id, term)
-        return (tf * (k1 + 1)) / (tf + k1)
+        return (tf * (k1 + 1)) / (tf + k1 * length_norm)
 
     def get_idf(self, term: str) -> float:
         tokens = tokenize_text(term)
@@ -100,6 +118,27 @@ class InvertedIndex:
         tf = self.get_tf(doc_id, term)
         idf = self.get_idf(term)
         return tf * idf
+
+    def get_bm25(self, doc_id, term) -> float:
+        bm25_tf = self.get_bm25_tf(doc_id, term)
+        bm25_idf = self.get_bm25_idf(term)
+        return bm25_tf * bm25_idf
+
+    def bm25_search(self, query, limit) -> list[dict]:
+        tokens = set(tokenize_text(query))
+        scores = {doc_id: 0 for doc_id in self.docmap}
+        for t in tokens:
+            ids_containing_term = self.index[t]
+            for id in ids_containing_term:
+                term_score = self.get_bm25(id, t)
+                scores[id] += term_score
+
+        sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        top_docs = [
+            (self.docmap[doc_id], score) for doc_id, score in sorted_scores[:limit]
+        ]
+
+        return top_docs
 
 
 def build_command() -> None:
@@ -180,3 +219,9 @@ def bm25_tf_command(doc_id: int, term: str, k1: float = BM25_K1) -> float:
     idx = InvertedIndex()
     idx.load()
     return idx.get_bm25_tf(doc_id, term, k1)
+
+
+def bm25_search_command(query, limit=DEFAULT_SEARCH_LIMIT) -> list[dict]:
+    idx = InvertedIndex()
+    idx.load()
+    return idx.bm25_search(query, limit)

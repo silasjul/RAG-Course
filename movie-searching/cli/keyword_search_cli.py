@@ -2,11 +2,12 @@
 
 import argparse
 
-from lib.search_utils import BM25_K1
+from lib.search_utils import BM25_K1, BM25_B
 
 from lib.keyword_search import (
     bm25_idf_command,
     bm25_tf_command,
+    bm25_search_command,
     build_command,
     idf_command,
     search_command,
@@ -56,6 +57,14 @@ def main() -> None:
     bm25_tf_parser.add_argument(
         "k1", type=float, nargs="?", default=BM25_K1, help="Tunable BM25 K1 parameter"
     )
+    bm25_tf_parser.add_argument(
+        "b", type=float, nargs="?", default=BM25_B, help="Tunable BM25 b parameter"
+    )
+
+    bm25search_parser = subparsers.add_parser(
+        "bm25search", help="Search movies using full BM25 scoring"
+    )
+    bm25search_parser.add_argument("query", type=str, help="Search query")
 
     args = parser.parse_args()
 
@@ -88,6 +97,12 @@ def main() -> None:
             print(
                 f"BM25 TF score of '{args.term}' in document '{args.doc_id}': {bm25tf:.2f}"
             )
+        case "bm25search":
+            search_result = bm25_search_command(args.query)
+            print(f"Search results for query: {args.query}")
+
+            for i, (doc, score) in enumerate(search_result, 1):
+                print(f"{i}. ({doc['id']}) {doc['title']} - Score: {score:.2f}")
         case _:
             parser.print_help()
 
