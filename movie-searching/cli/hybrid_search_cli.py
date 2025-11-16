@@ -1,6 +1,7 @@
 import argparse
 
 from lib.hybrid_search import normalize_scores, weighed_search, rrf_search
+from lib.gemini_utils import enhance_query
 
 
 def main() -> None:
@@ -46,6 +47,12 @@ def main() -> None:
     rrf_search_parser.add_argument(
         "--limit", type=int, default=5, help="how many results to show"
     )
+    rrf_search_parser.add_argument(
+        "--enhance",
+        type=str,
+        choices=["spell", "rewrite", "expand"],
+        help="Query enhancement method",
+    )
 
     args = parser.parse_args()
 
@@ -57,6 +64,8 @@ def main() -> None:
         case "weighted-search":
             weighed_search(args.query, args.alpha, args.limit)
         case "rrf-search":
+            if args.enhance is not None:
+                args.query = enhance_query(args.query, method=args.enhance)
             rrf_search(args.query, args.k, args.limit)
         case _:
             parser.print_help()
