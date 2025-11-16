@@ -163,7 +163,7 @@ class ChunkedSemanticSearch(SemanticSearch):
             {
                 "id": self.documents[movie_id]["id"],
                 "title": self.documents[movie_id]["title"],
-                "document": self.documents[movie_id]["description"],
+                "document": self.documents[movie_id]["description"][:200],
                 "score": round(score, SCORE_PRECISION),
                 "metadata": {},
             }
