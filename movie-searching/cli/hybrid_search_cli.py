@@ -1,6 +1,13 @@
 import argparse
 
-from lib.hybrid_search import normalize_scores, weighed_search, rrf_search
+from lib.hybrid_search import (
+    normalize_scores,
+    weighed_search,
+    rrf_search,
+    print_results,
+)
+
+from lib.gemini_utils import evaluate_results
 
 
 def main() -> None:
@@ -55,8 +62,18 @@ def main() -> None:
     rrf_search_parser.add_argument(
         "--rerank-method",
         type=str,
-        choices=["individual", "batch"],
+        choices=["individual", "batch", "cross_encoder"],
         help="Method to rerank the rrf results to provide better rankings",
+    )
+    rrf_search_parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Will use an llm to evaluate the search results and give them a score",
+    )
+    rrf_search_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug output",
     )
 
     args = parser.parse_args()
@@ -69,7 +86,17 @@ def main() -> None:
         case "weighted-search":
             weighed_search(args.query, args.alpha, args.limit)
         case "rrf-search":
-            rrf_search(args.query, args.k, args.limit, args.enhance, args.rerank_method)
+            result = rrf_search(
+                args.query,
+                args.k,
+                args.limit,
+                args.enhance,
+                args.rerank_method,
+                args.debug,
+            )
+            print_results(result, args.rerank_method)
+            if args.evaluate:
+                evaluate_results(args.query, result)
         case _:
             parser.print_help()
 

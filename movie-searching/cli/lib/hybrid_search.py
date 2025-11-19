@@ -90,7 +90,7 @@ class HybridSearch:
                 results[doc_id]["combined_rrf_score"] += rrf_score
             else:
                 results[doc_id] = {
-                    "document": self.idx.docmap[doc_id],
+                    "document": r["document"],
                     "ranks": {"keyword": None, "semantic": rank},
                     "combined_rrf_score": rrf_score,
                 }
@@ -124,28 +124,42 @@ def weighed_search(query, alpha, limit):
         print()
 
 
-def rrf_search(query, k, limit, enhance, rerank_method):
+def rrf_search(query, k, limit, enhance=None, rerank_method=None, debug=False):
     hs = HybridSearch(load_movies())
+    if debug:
+        print("DEBUGGING: original query: " + query)
     if enhance:
         query = enhance_query(query, method=enhance)
+        if debug:
+            print("DEBUGGING: enhanced query: " + query)
     if rerank_method:
         results = hs.rrf_search(query.strip(), k, limit * 5)
-        reranked_results = rerank(query, results, method=rerank_method)
-        for idx, r in enumerate(reranked_results[:limit], 1):
-            print(f'{idx}. {r["document"]["title"]}')
-            if rerank_method == "individual":
-                print(f'Rerank Score: {r["rerank_score"]:.2f}')
-            elif rerank_method == "batch":
-                print(f'Rerank Rank: {r["rerank_rank"]}')
-            print(f'RRF Score: {r["combined_rrf_score"]:.4f}')
-            print(f'BM25: {r["ranks"]["keyword"]}, Semantic: {r["ranks"]["semantic"]}')
-            print(r["document"]["description"][:200] + "...")
-            print()
+        if debug:
+            print(f"DEBUGGING: rrf results:")
+            print_results(results)
+        results = rerank(query, results, method=rerank_method)
+        if debug:
+            print(f"DEBUGGING: rrf-rerank results:")
+            print_results(results, rerank_method)
     else:
         results = hs.rrf_search(query.strip(), k, limit)
-        for idx, r in enumerate(results, 1):
-            print(f'{idx}. {r["document"]["title"]}')
-            print(f'RRF Score: {r["combined_rrf_score"]:.4f}')
-            print(f'BM25: {r["ranks"]["keyword"]}, Semantic: {r["ranks"]["semantic"]}')
-            print(r["document"]["description"][:200] + "...")
-            print()
+        if debug:
+            print(f"DEBUGGING: rrf-results:")
+            print_results(results, rerank_method)
+
+    return results[:limit]
+
+
+def print_results(results, rerankmethod=None):
+    for idx, r in enumerate(results, 1):
+        print(f'{idx}. {r["document"]["title"]}')
+        if rerankmethod == "individual":
+            print(f'Rerank Score: {r["rerank_score"]:.2f}')
+        elif rerankmethod == "batch":
+            print(f'Rerank Rank: {r["rerank_rank"]}')
+        elif rerankmethod == "cross_encoder":
+            print(f'Cross Encoder Score: {r["cross_encoded_score"]}')
+        print(f'RRF Score: {r["combined_rrf_score"]:.4f}')
+        print(f'BM25: {r["ranks"]["keyword"]}, Semantic: {r["ranks"]["semantic"]}')
+        print(r["document"]["description"][:200] + "...")
+        print()

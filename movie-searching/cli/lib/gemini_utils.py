@@ -4,12 +4,15 @@ import os
 from dotenv import load_dotenv
 import time
 import json
+from sentence_transformers import CrossEncoder
 
 load_dotenv()
 
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 model = "gemini-2.5-flash-lite"
+
+cross_encoder = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L2-v2")
 
 
 def enhance_query(query: str, method: str):
@@ -95,37 +98,24 @@ def rerank(
         case "individual":
             reranked_results = []
             for r in results:
-                for attempt in range(3):
-                    try:
-                        response = client.models.generate_content(
-                            model=model,
-                            contents=f"""
-                            Rate how well this movie matches the search query.
+                response = client.models.generate_content(
+                    model=model,
+                    contents=f"""
+                    Rate how well this movie matches the search query.
 
-                            Query: "{query}"
-                            Movie: {r["document"]["title"]} - {r["document"]["description"]}
+                    Query: "{query}"
+                    Movie: {r["document"]["title"]} - {r["document"]["description"]}
 
-                            Consider:
-                            - Direct relevance to query
-                            - User intent (what they're looking for)
-                            - Content appropriateness
+                    Consider:
+                    - Direct relevance to query
+                    - User intent (what they're looking for)
+                    - Content appropriateness
 
-                            Rate 0-10 (10 = perfect match).
-                            Give me ONLY the number in your response, no other text or explanation.
+                    Rate 0-10 (10 = perfect match).
+                    Give me ONLY the number in your response, no other text or explanation.
 
-                            Score:""",
-                        )
-                        break
-                    except errors.ClientError as e:
-                        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                            print(
-                                f"Rate limit hit, retrying in 10 seconds... ({attempt+1}/3)"
-                            )
-                            time.sleep(10)
-                        else:
-                            raise
-                else:
-                    raise Exception("Max retries exceeded for individual rerank")
+                    Score:""",
+                )
                 try:
                     r["rerank_score"] = float(response.text)
                 except ValueError as e:
@@ -140,34 +130,21 @@ def rerank(
         case "batch":
             id_to_result = {r["document"]["id"]: r for r in results}
             doc_list_str = json.dumps(results)
-            for attempt in range(3):
-                try:
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=f"""
-                        Rank these movies by relevance to the search query.
+            response = client.models.generate_content(
+                model=model,
+                contents=f"""
+                Rank these movies by relevance to the search query.
 
-                        Query: "{query}"
+                Query: "{query}"
 
-                        Movies:
-                        {doc_list_str}
+                Movies:
+                {doc_list_str}
 
-                        Return ONLY the document IDs in order of relevance (best match first). Return a valid JSON list, nothing else. For example:
+                Return ONLY the document IDs in order of relevance (best match first). Return a valid JSON list, nothing else. For example:
 
-                        [75, 12, 34, 2, 1]
-                        """,
-                    )
-                    break
-                except errors.ClientError as e:
-                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        print(
-                            f"Rate limit hit, retrying in 10 seconds... ({attempt+1}/3)"
-                        )
-                        time.sleep(10)
-                    else:
-                        raise
-            else:
-                raise Exception("Max retries exceeded for batch rerank")
+                [75, 12, 34, 2, 1]
+                """,
+            )
             try:
                 rerankings = json.loads(response.text)
             except json.JSONDecodeError as e:
@@ -181,3 +158,48 @@ def rerank(
                 r["rerank_rank"] = idx
                 reranked_results.append(r)
             return reranked_results
+
+        case "cross_encoder":
+            scores = cross_encoder.predict(
+                [
+                    [
+                        query,
+                        f"{r['document']['title']} - {r['document']['description']}",
+                    ]
+                    for r in results
+                ]
+            )
+            for idx, r in enumerate(results):
+                r["cross_encoded_score"] = scores[idx]
+            return sorted(
+                results, key=lambda key: key["cross_encoded_score"], reverse=True
+            )
+
+
+def evaluate_results(query, results):
+    formatted_results = json.dumps(results)
+    response = client.models.generate_content(
+        model=model,
+        contents=f"""
+        Rate how relevant each result is to this query on a 0-3 scale:
+
+        Query: "{query}"
+
+        Results:
+        {chr(10).join(formatted_results)}
+
+        Scale:
+        - 3: Highly relevant
+        - 2: Relevant
+        - 1: Marginally relevant
+        - 0: Not relevant
+
+        Do NOT give any numbers out than 0, 1, 2, or 3.
+
+        Return ONLY the scores in the same order you were given the documents. Return a valid JSON list, nothing else. For example:
+
+        [2, 0, 3, 2, 0, 1]""",
+    )
+    score_list = json.loads(response.text)
+    for idx, r in enumerate(results):
+        print(f"{idx+1} - {r['document']['title']}: {score_list[idx]}/3")

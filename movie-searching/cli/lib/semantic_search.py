@@ -4,14 +4,13 @@ import os
 from lib.search_utils import CACHE_DIR, load_movies
 import re
 import json
-from collections import defaultdict
 
 from lib.search_utils import SCORE_PRECISION
 
 
 class SemanticSearch:
     def __init__(self):
-        self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
         self.embeddings = None
         self.documents = None
