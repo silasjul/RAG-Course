@@ -1,0 +1,31 @@
+import json
+import os
+
+# How many results to show when searching
+DEFAULT_SEARCH_LIMIT = 5
+
+# BM25 diminishing returns saturation (how much a tf is devalued for overusing a term)
+BM25_K1 = 1.5
+
+# Document length normalization strength (so that longer description arent favored over shorter once as they might be just as relevant)
+BM25_B = 0.75
+
+SCORE_PRECISION = 4
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "movies.json")
+STOPWORDS_PATH = os.path.join(PROJECT_ROOT, "data", "stopwords.txt")
+GOLDEN_DATASET_PATH = os.path.join(PROJECT_ROOT, "data", "golden_dataset.json")
+
+CACHE_DIR = os.path.join(PROJECT_ROOT, "cache")
+
+
+def load_movies() -> list[dict]:
+    with open(DATA_PATH, "r") as f:
+        data = json.load(f)
+    return data["movies"]
+
+
+def load_stopwords() -> list[str]:
+    with open(STOPWORDS_PATH, "r") as f:
+        return f.read().splitlines()
