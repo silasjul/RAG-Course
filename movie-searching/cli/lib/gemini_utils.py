@@ -203,3 +203,13 @@ def evaluate_results(query, results):
     score_list = json.loads(response.text)
     for idx, r in enumerate(results):
         print(f"{idx+1} - {r['document']['title']}: {score_list[idx]}/3")
+
+
+def generate_response(query: str):
+    response = client.models.generate_content(model=model, contents=query)
+    return response.text
+
+
+def generate_response_parts(parts: list[str]):
+    response = client.models.generate_content(model=model, contents=parts)
+    return response
